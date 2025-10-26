@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard de Monitoreo</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    
+    <style>
+        body { font-family: sans-serif; margin: 0; padding: 0; }
+        h1 { text-align: center; }
+        /* El mapa debe tener una altura definida para mostrarse */
+        #map { height: 600px; width: 80%; margin: auto; border: 1px solid #ccc; }
+    </style>
+</head>
+<body>
+
+    <h1>Monitoreo en Vivo</h1>
+    <div id="map"></div>
+
+    <script>
+        // 3. Obtenemos la URL del servidor (ajusta esto si no usas ngrok)
+        // Usamos window.location.origin para que funcione automáticamente
+        // tanto en local como con ngrok.
+        const serverUrl = window.location.origin;
+
+        // 4. Inicializamos el mapa y lo centramos (ej. en CDMX)
+        const map = L.map('map').setView([19.4326, -99.1332], 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
+
+        // 5. Creamos una variable para guardar el marcador del dispositivo
+        let liveMarker = null;
+
+        // 6. Nos conectamos al servidor de Socket.IO
+        const socket = io(serverUrl);
+
+        socket.on('connect', () => {
+            console.log('¡Conectado al servidor de WebSockets!');
+        });
+
+        // 7. ¡LA MAGIA! Escuchamos el evento 'new_location'
+        socket.on('new_location', (data) => {
+            console.log('Nueva ubicación recibida:', data);
+            const newPosition = [data.lat, data.lng];
+
+            if (liveMarker === null) {
+                // Si el marcador no existe, lo creamos
+                liveMarker = L.marker(newPosition).addTo(map)
+                    .bindPopup('Ubicación en vivo')
+                    .openPopup();
+                map.setView(newPosition, 16); // Centramos el mapa en la nueva posición
+            } else {
+                // Si ya existe, solo movemos su posición
+                liveMarker.setLatLng(newPosition);
+                map.panTo(newPosition); // Movemos suavemente el mapa
+            }
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Desconectado del servidor.');
+        });
+    </script>
+</body>
+</html>
