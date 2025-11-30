@@ -7,7 +7,13 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
-const String NGROK_URL = "tectricial-leon-unhurryingly.ngrok-free.dev";
+// --- RECUERDA CAMBIAR ESTA LÍNEA CADA VEZ QUE INICIES NGROK ---
+const String NGROK_URL = "https://tectricial-leon-unhurryingly.ngrok-free.dev";
+// Ejemplo: const String NGROK_URL = "9a2f-187-189-192-58.ngrok-free.app";
+
+// Determina si usar http o https basado en la URL
+String getHttpProtocol() => NGROK_URL.contains('ngrok') ? 'https' : 'http';
+String getWsProtocol() => NGROK_URL.contains('ngrok') ? 'wss' : 'ws';
 
 void main() {
   runApp(const MyApp());
@@ -27,6 +33,8 @@ class MyApp extends StatelessWidget {
 }
 
 class MapScreen extends StatefulWidget {
+  const MapScreen({super.key});
+
   @override
   State<MapScreen> createState() => _MapScreenState();
 }
@@ -36,8 +44,8 @@ class _MapScreenState extends State<MapScreen> {
   final MapController _mapController = MapController();
   LatLng? _otherUserPosition;
   late IO.Socket socket;
-  // Ya no necesitamos la variable _lastUpdateTime
   bool _isConnected = false;
+  Position? _initialPositionToSend;
 
   void _fitMapToBounds() {
     if (_currentPosition == null || _otherUserPosition == null) return;
@@ -48,7 +56,7 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _connectToSocket() {
-    socket = IO.io('https://$NGROK_URL', <String, dynamic>{
+    socket = IO.io('${getWsProtocol()}://$NGROK_URL', <String, dynamic>{
       'transports': ['websocket'],
       'autoConnect': true,
       'extraHeaders': {'ngrok-skip-browser-warning': 'true'},
@@ -59,10 +67,11 @@ class _MapScreenState extends State<MapScreen> {
       setState(() {
         _isConnected = true;
       });
-
-      // --- ¡CAMBIO CLAVE AQUÍ! ---
-      // Solo obtenemos y enviamos la ubicación DESPUÉS de que la conexión es exitosa.
-      _getInitialLocation();
+      if (_initialPositionToSend != null) {
+        print("Enviando ubicación inicial pendiente...");
+        _sendLocationToServer(_initialPositionToSend!);
+        _initialPositionToSend = null;
+      }
     });
 
     socket.on('new_location', (data) {
@@ -82,10 +91,17 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   Future<void> _sendLocationToServer(Position position) async {
-    // Ya no necesitamos el check de _isConnected aquí, porque esta función
-    // solo se llama DESPUÉS de que _isConnected es true.
+    if (!_isConnected) {
+      print(
+        "No conectado al servidor. Guardando ubicación para enviar después.",
+      );
+      _initialPositionToSend = position;
+      return;
+    }
 
-    final url = Uri.parse('https://$NGROK_URL/api/update_location');
+    final url = Uri.parse(
+      '${getHttpProtocol()}://$NGROK_URL/api/update_location',
+    );
     try {
       final response = await http.post(
         url,
@@ -106,10 +122,10 @@ class _MapScreenState extends State<MapScreen> {
       }
     } catch (e) {
       print('Error de conexión: $e');
+      _initialPositionToSend = position;
     }
   }
 
-  // Esta función ahora solo se ejecuta cuando se lo pedimos
   void _getInitialLocation() async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
@@ -139,7 +155,6 @@ class _MapScreenState extends State<MapScreen> {
         _currentPosition = LatLng(position.latitude, position.longitude);
       });
 
-      // Enviamos la posición inicial al servidor
       _sendLocationToServer(position);
     } catch (e) {
       print("Error obteniendo la ubicación: $e");
@@ -149,10 +164,8 @@ class _MapScreenState extends State<MapScreen> {
   @override
   void initState() {
     super.initState();
-    // --- ¡CAMBIO CLAVE AQUÍ! ---
-    // Ahora solo iniciamos la conexión.
     _connectToSocket();
-    // La función _getInitialLocation() se movió a 'onConnect'.
+    _getInitialLocation();
   }
 
   @override
