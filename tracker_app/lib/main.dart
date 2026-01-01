@@ -7,9 +7,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 
-// --- RECUERDA CAMBIAR ESTA LÍNEA CADA VEZ QUE INICIES NGROK ---
-const String NGROK_URL = "https://tectricial-leon-unhurryingly.ngrok-free.dev";
-// Ejemplo: const String NGROK_URL = "9a2f-187-189-192-58.ngrok-free.app";
+// --- ACTUALIZAMOS LA LINEA CADA VEZ QUE REINICIAMOS NGROK ---
+const String NGROK_URL = "tectricial-leon-unhurryingly.ngrok-free.dev";
 
 // Determina si usar http o https basado en la URL
 String getHttpProtocol() => NGROK_URL.contains('ngrok') ? 'https' : 'http';
@@ -79,7 +78,10 @@ class _MapScreenState extends State<MapScreen> {
       setState(() {
         _otherUserPosition = LatLng(data['lat'], data['lng']);
       });
-      _fitMapToBounds();
+
+      // --- COMENTA ESTA LÍNEA ---
+      // _fitMapToBounds();
+      // Al quitarla, el mapa ya no se moverá solo y tendrás control total.
     });
 
     socket.onDisconnect((_) {

@@ -6,64 +6,79 @@
     <title>Dashboard de Monitoreo</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 0; }
-        h1 { text-align: center; }
-        /* El mapa debe tener una altura definida para mostrarse */
-        #map { height: 600px; width: 80%; margin: auto; border: 1px solid #ccc; }
+        body { font-family: sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
+        
+        /* Estilo para la barra de alerta */
+        #alert-box {
+            padding: 20px;
+            text-align: center;
+            font-size: 24px;
+            font-weight: bold;
+            color: white;
+            background-color: #28a745; /* Verde por defecto */
+            transition: background-color 0.5s;
+        }
+
+        #map { flex-grow: 1; width: 100%; }
     </style>
 </head>
 <body>
 
-    <h1>Monitoreo en Vivo</h1>
+    <div id="alert-box">Esperando datos...</div>
+    
     <div id="map"></div>
 
     <script>
-        // 3. Obtenemos la URL del servidor (ajusta esto si no usas ngrok)
-        // Usamos window.location.origin para que funcione automáticamente
-        // tanto en local como con ngrok.
         const serverUrl = window.location.origin;
-
-        // 4. Inicializamos el mapa y lo centramos (ej. en CDMX)
-        const map = L.map('map').setView([19.4326, -99.1332], 13);
+        const map = L.map('map').setView([19.4326, -99.1332], 14);
+        
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+            attribution: '&copy; OpenStreetMap'
         }).addTo(map);
 
-        // 5. Creamos una variable para guardar el marcador del dispositivo
-        let liveMarker = null;
+        // Dibujamos el cuadro del Zócalo en el mapa para verlo visualmente
+        const geofence = L.polygon([
+            [19.4340, -99.1352],
+            [19.4340, -99.1314],
+            [19.4315, -99.1314],
+            [19.4315, -99.1352]
+        ], {color: 'red', fillOpacity: 0.1}).addTo(map);
 
-        // 6. Nos conectamos al servidor de Socket.IO
+        let liveMarker = null;
         const socket = io(serverUrl);
+        const alertBox = document.getElementById('alert-box');
 
         socket.on('connect', () => {
-            console.log('¡Conectado al servidor de WebSockets!');
+            console.log('Conectado al servidor');
         });
 
-        // 7. ¡LA MAGIA! Escuchamos el evento 'new_location'
+        // Escuchamos la ubicación para mover el pin
         socket.on('new_location', (data) => {
-            console.log('Nueva ubicación recibida:', data);
             const newPosition = [data.lat, data.lng];
-
             if (liveMarker === null) {
-                // Si el marcador no existe, lo creamos
-                liveMarker = L.marker(newPosition).addTo(map)
-                    .bindPopup('Ubicación en vivo')
-                    .openPopup();
-                map.setView(newPosition, 16); // Centramos el mapa en la nueva posición
+                liveMarker = L.marker(newPosition).addTo(map).bindPopup('Objetivo').openPopup();
+                map.setView(newPosition); 
             } else {
-                // Si ya existe, solo movemos su posición
                 liveMarker.setLatLng(newPosition);
-                map.panTo(newPosition); // Movemos suavemente el mapa
             }
         });
 
-        socket.on('disconnect', () => {
-            console.log('Desconectado del servidor.');
+        // --- LÓGICA DE ALERTA ---
+        socket.on('geofence_event', (data) => {
+            alertBox.innerText = data.message;
+            
+            if (data.status === 'DANGER') {
+                // Si entra a la zona: Fondo Rojo parpadeante (opcional) o fijo
+                alertBox.style.backgroundColor = '#dc3545'; // Rojo
+            } else {
+                // Si sale de la zona: Fondo Verde
+                alertBox.style.backgroundColor = '#28a745'; // Verde
+            }
         });
+
     </script>
 </body>
 </html>
