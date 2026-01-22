@@ -3,82 +3,203 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard de Monitoreo</title>
+    <title>Centro de Monitoreo - Proyecto Geofencing</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     
     <style>
-        body { font-family: sans-serif; margin: 0; padding: 0; display: flex; flex-direction: column; height: 100vh; }
+        /* Estilo oscuro profesional "Dark Mode" */
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; padding: 0; 
+            display: flex; flex-direction: column; 
+            height: 100vh; 
+            background-color: #121212; 
+        }
         
-        /* Estilo para la barra de alerta */
+        /* Barra Superior de Alerta */
         #alert-box {
-            padding: 20px;
+            padding: 15px;
             text-align: center;
             font-size: 24px;
             font-weight: bold;
             color: white;
-            background-color: #28a745; /* Verde por defecto */
-            transition: background-color 0.5s;
+            background-color: #28a745; /* Verde inicial */
+            box-shadow: 0 2px 10px rgba(0,0,0,0.5);
+            z-index: 1000;
+            transition: background-color 0.3s ease;
         }
 
-        #map { flex-grow: 1; width: 100%; }
+        /* Contenedor dividido: Mapa (Izquierda) + Logs (Derecha) */
+        #main-container {
+            display: flex;
+            flex-grow: 1;
+            height: calc(100vh - 60px); /* Restamos la altura del header */
+        }
+
+        #map { 
+            flex-grow: 1; 
+            height: 100%; 
+        }
+
+        /* Panel Lateral de Historial */
+        #log-panel {
+            width: 350px;
+            background-color: #1e1e1e;
+            color: #e0e0e0;
+            display: flex;
+            flex-direction: column;
+            border-left: 1px solid #333;
+        }
+
+        .log-header {
+            padding: 15px;
+            background-color: #252526;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #333;
+            text-align: center;
+            color: #fff;
+        }
+
+        #log-list-container {
+            flex-grow: 1;
+            overflow-y: auto; /* Scroll si hay muchos eventos */
+            padding: 10px;
+        }
+
+        #log-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        /* Estilo de cada renglón del log */
+        .log-item {
+            padding: 10px;
+            margin-bottom: 8px;
+            border-radius: 4px;
+            font-size: 13px;
+            border-left: 4px solid #555;
+            background-color: #2d2d2d;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .log-danger { 
+            border-left-color: #ff4444; 
+            background-color: rgba(255, 68, 68, 0.1); 
+        }
+        
+        .log-safe { 
+            border-left-color: #00C851; 
+        }
+
+        .log-time {
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 4px;
+            display: block;
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateX(20px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
     </style>
 </head>
 <body>
 
-    <div id="alert-box">Esperando datos...</div>
+    <div id="alert-box">SISTEMA ACTIVO - ESPERANDO DATOS...</div>
     
-    <div id="map"></div>
+    <div id="main-container">
+        <div id="map"></div>
+        
+        <div id="log-panel">
+            <div class="log-header">📟 Bitácora de Eventos</div>
+            <div id="log-list-container">
+                <ul id="log-list">
+                    </ul>
+            </div>
+        </div>
+    </div>
 
     <script>
         const serverUrl = window.location.origin;
-        const map = L.map('map').setView([19.4326, -99.1332], 14);
+        const map = L.map('map').setView([19.4326, -99.1332], 15);
         
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap'
+        // Mapa base "Dark Matter" (más elegante para demos)
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; OpenStreetMap &copy; CARTO'
         }).addTo(map);
 
-        // Dibujamos el cuadro del Zócalo en el mapa para verlo visualmente
+        // Geocerca Visual (Cuadro Rojo)
         const geofence = L.polygon([
             [19.4340, -99.1352],
             [19.4340, -99.1314],
             [19.4315, -99.1314],
             [19.4315, -99.1352]
-        ], {color: 'red', fillOpacity: 0.1}).addTo(map);
+        ], {color: '#ff4444', weight: 2, fillOpacity: 0.1, dashArray: '5, 10'}).addTo(map);
 
         let liveMarker = null;
         const socket = io(serverUrl);
         const alertBox = document.getElementById('alert-box');
+        const logList = document.getElementById('log-list');
+
+        // Función auxiliar para agregar eventos a la lista
+        function addLogEntry(message, type) {
+            const li = document.createElement('li');
+            const now = new Date();
+            const timeString = now.toLocaleTimeString(); // Hora exacta
+            
+            li.className = `log-item ${type === 'DANGER' ? 'log-danger' : 'log-safe'}`;
+            li.innerHTML = `<span class="log-time">${timeString}</span> ${message}`;
+            
+            // Insertar al inicio (el más nuevo arriba)
+            logList.insertBefore(li, logList.firstChild);
+        }
 
         socket.on('connect', () => {
-            console.log('Conectado al servidor');
+            console.log('Dashboard conectado');
+            addLogEntry("Sistema conectado al servidor central", "SAFE");
         });
 
-        // Escuchamos la ubicación para mover el pin
+        // 1. Escuchar Ubicación (Mover el punto)
         socket.on('new_location', (data) => {
             const newPosition = [data.lat, data.lng];
             if (liveMarker === null) {
-                liveMarker = L.marker(newPosition).addTo(map).bindPopup('Objetivo').openPopup();
+                liveMarker = L.circleMarker(newPosition, {
+                    color: '#00bcd4', radius: 8, fillOpacity: 0.9, weight: 2
+                }).addTo(map).bindPopup('Dispositivo Rastreable');
                 map.setView(newPosition); 
             } else {
                 liveMarker.setLatLng(newPosition);
             }
         });
 
-        // --- LÓGICA DE ALERTA ---
+        // 2. Escuchar Alertas (Cambiar color y Log)
+        let lastStatus = ''; // Para evitar repetir el log mil veces por segundo
+
         socket.on('geofence_event', (data) => {
             alertBox.innerText = data.message;
             
             if (data.status === 'DANGER') {
-                // Si entra a la zona: Fondo Rojo parpadeante (opcional) o fijo
                 alertBox.style.backgroundColor = '#dc3545'; // Rojo
+                
+                if (lastStatus !== 'DANGER') {
+                    addLogEntry("⚠️ ALERTA: Intrusión detectada en Zona Restringida", "DANGER");
+                    lastStatus = 'DANGER';
+                }
             } else {
-                // Si sale de la zona: Fondo Verde
                 alertBox.style.backgroundColor = '#28a745'; // Verde
+                
+                if (lastStatus !== 'SAFE' && lastStatus !== '') {
+                    addLogEntry("🛡️ Objetivo retornó a zona segura", "SAFE");
+                    lastStatus = 'SAFE';
+                }
             }
         });
-
     </script>
 </body>
 </html>
